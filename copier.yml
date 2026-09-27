@@ -1,0 +1,65 @@
+_min_copier_version: "9.2.0"
+_subdirectory: template
+_answers_file: .copier-answers.yml
+_envops:
+  keep_trailing_newline: true
+
+project_name:
+  type: str
+  help: Project name (also used as GitHub repo name)
+  default: "{{ _folder_name }}"
+  validator: >-
+    {% if not (project_name | regex_search('^[a-zA-Z0-9][a-zA-Z0-9._-]*$')) %}
+    Use letters, digits, '.', '_' or '-' only
+    {% endif %}
+
+description:
+  type: str
+  help: One-line description
+  default: ""
+
+language:
+  type: str
+  help: Project flavour
+  choices:
+    Plain (direnv + nix devshell + just): none
+    Python (plain + uv): python
+  default: none
+
+python_version:
+  type: str
+  help: Python version (must exist in nixpkgs as pythonXYZ)
+  choices: ["3.11", "3.12", "3.13"]
+  default: "3.12"
+  when: "{{ language == 'python' }}"
+
+package_name:
+  type: str
+  help: Python import package name
+  default: "{{ project_name | lower | replace('-', '_') | replace('.', '_') }}"
+  when: "{{ language == 'python' }}"
+
+create_github:
+  type: bool
+  help: Create a GitHub repo and push (requires gh, authenticated)?
+  default: false
+
+github_visibility:
+  type: str
+  help: Repo visibility
+  choices: [private, public]
+  default: private
+  when: "{{ create_github }}"
+
+_tasks:
+  # Nix flakes only see git-tracked files, so stage before touching nix.
+  - "git init -q 2>/dev/null || true"
+  - "git add -A"
+  - "nix flake lock"
+  - command: "nix develop -c uv sync"
+    when: "{{ language == 'python' }}"
+  - "command -v direnv >/dev/null && direnv allow . || true"
+  - "git add -A"
+  - "git diff --cached --quiet || git commit -qm 'Initial commit from project-templates'"
+  - command: "gh repo create {{ project_name }} --{{ github_visibility }} --source=. --remote=origin --push"
+    when: "{{ create_github }}"

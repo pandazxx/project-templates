@@ -1,0 +1,39 @@
+{
+  description = "{{ description or project_name }}";
+
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+  outputs = { nixpkgs, ... }:
+    let
+      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+    in
+    {
+      devShells = forAllSystems (pkgs:
+{%- if language == 'python' %}
+        let
+          python = pkgs.python{{ python_version | replace('.', '') }};
+        in
+{%- endif %}
+        {
+          default = pkgs.mkShell {
+            packages = with pkgs; [
+              just
+              git
+{%- if language == 'python' %}
+              uv
+              python
+{%- endif %}
+            ];
+{%- if language == 'python' %}
+
+            env = {
+              # Use nixpkgs' Python instead of uv-managed downloads
+              UV_PYTHON_DOWNLOADS = "never";
+              UV_PYTHON = "${python}/bin/python";
+            };
+{%- endif %}
+          };
+        });
+    };
+}
